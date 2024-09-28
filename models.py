@@ -34,7 +34,7 @@ class UserCreate(BaseModel):
     district: str
     full_name: str
     pesel: str
-    role: str
+    role: str = "USER"
     hashed_password: str
 
 

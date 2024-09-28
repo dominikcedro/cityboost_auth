@@ -7,7 +7,7 @@ description: Main script for users endpoints
 # from dotenv import load_dotenv
 import os
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 import bson
 from icecream import ic
@@ -162,7 +162,7 @@ async def register_new_user(register_request: RegisterRequest):
         pesel=register_request.pesel,
         full_name=register_request.full_name,
         district=register_request.district,
-        role="USER"
+        role=register_request.role or "USER"
     )
     added_user = add_user_to_db(collection_users, new_user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -242,3 +242,14 @@ async def extract_user_id(token_request: TokenRequest = Body(...)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@app.get("/users", response_model=List[UserResponse])
+async def get_all_users():
+    users = list(collection_users.find({}))
+    for user in users:
+        user["_id"] = str(user["_id"])
+    return [UserResponse(**user) for user in users]
+
+@app.get("/health")
+async def healthcheck():
+    return {"healthcheck": "positive"}
