@@ -44,8 +44,8 @@ def add_user_to_db(db, user: UserCreate):
     del user_dict["password"]
     result = db.insert_one(user_dict)
     if result.inserted_id:
+        user_dict["_id"] = str(result.inserted_id)
         ic("user collection posted")
-
         return UserInDB(**user_dict)
     else:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User registration failed")
@@ -59,8 +59,8 @@ def get_user(collection, username: str):
     return None
 
 
-def authenticate_user(collection, username: str, password: str):
-    user = get_user(collection, username)
+def authenticate_user(collection, email: EmailStr, password: str):
+    user = get_user(collection, email)
     if not user:
         return False
     if not verify_password(password, user.hashed_password):
@@ -76,13 +76,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: EmailStr = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        token_data = TokenData(username=username)
+        token_data = TokenData(email=email)
     except InvalidTokenError:
         raise credentials_exception
-    user = get_user(collection_users, username=token_data.username)
+    user = get_user(collection_users, email=token_data.email)
     if user is None:
         raise credentials_exception
     return user
@@ -107,26 +107,26 @@ def get_user_by_id(collection, user_id: str):
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
 ) -> Token:
-    user = authenticate_user(collection_users, form_data.username, form_data.password)
+    user = authenticate_user(collection_users, form_data.email, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.email}, expires_delta=access_token_expires
     )
     return Token(access_token=access_token, token_type="bearer")
 
 
 @app.post("/register", response_model=Token)
 async def register_new_user(user: UserCreate):
-    if get_user(collection_users, user.username):
+    if get_user(collection_users, user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
+            detail="Email already registered",
         )
     if get_user(collection_users, user.pesel):
         raise HTTPException(
@@ -136,7 +136,7 @@ async def register_new_user(user: UserCreate):
     new_user = add_user_to_db(collection_users, user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": new_user.username}, expires_delta=access_token_expires
+        data={"sub": new_user.email}, expires_delta=access_token_expires
     )
     return Token(access_token=access_token, token_type="bearer")
 
@@ -148,7 +148,7 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_active_user
 
 @app.get("/users/me/items/")
 async def read_own_items(current_user: User = Depends(get_current_active_user)):
-    return [{"item_id": "Foo", "owner": current_user.username}]
+    return [{"item_id": "Foo", "owner": current_user.email}]
 
 
 @app.get("/users/{user_id}", response_model=UserOut)

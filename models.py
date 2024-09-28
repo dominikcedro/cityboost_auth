@@ -16,11 +16,11 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: str | None = None
+    email: EmailStr | None = None
 
 
 class User(BaseModel):
-    username: str
+    email: EmailStr
     district: str
     full_name: str
     pesel: str
@@ -30,12 +30,11 @@ class User(BaseModel):
 
 
 class UserCreate(BaseModel):
-    username: str
+    email: EmailStr
     district: str
     full_name: str
     pesel: str
     role: str
-    email: EmailStr
     password: str
 
 
@@ -52,7 +51,7 @@ class UserInDB(User):
 
 class UserOut(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
-    username: str
+    email: EmailStr
     district: str
     full_name: str
     role: str
