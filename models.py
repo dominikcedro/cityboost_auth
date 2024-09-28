@@ -82,3 +82,6 @@ from pydantic import BaseModel
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+class TokenRequest(BaseModel):
+    access_token: str

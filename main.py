@@ -23,7 +23,7 @@ from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 # module imports
 from models import User, UserCreate, UserInDB, Token, TokenData, LoginRequest, RegisterRequest, UserResponse, \
-    RefreshRequest
+    RefreshRequest, TokenRequest
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES, create_refresh_token
 from fastapi import Body
@@ -187,25 +187,26 @@ async def read_user_by_id(user_id: str):
 
 from fastapi import Header
 
-@app.get("/users/token")
-async def read_user_from_token(authorization: str = Header(...)):
+@app.post("/users/me", response_model=UserResponse)
+async def read_users_me(token_request: TokenRequest = Body(...)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        token = authorization.split(" ")[1]  # Extract the token from the "Bearer <token>" format
+        token = token_request.access_token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("user_id")
-        ic("Decoded payload:", payload)  # Add logging for the payload
         if user_id is None:
             raise credentials_exception
-        print(f"Extracted user_id from token: {user_id}")  # Print user_id to console
-    except (InvalidTokenError, IndexError) as e:
-        ic("InvalidTokenError or IndexError:", e)  # Add logging for the exception
+    except InvalidTokenError:
         raise credentials_exception
-    return {"message": "User ID printed to console"}
+
+    user = get_user_by_id(collection_users, user_id)
+    if user is None:
+        raise credentials_exception
+    return user
 
 
 from fastapi import Body, HTTPException, status
