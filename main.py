@@ -8,6 +8,8 @@ description: Main script for users endpoints
 import os
 from enum import Enum
 from typing import Optional
+
+import bson
 from icecream import ic
 from datetime import datetime, timedelta, timezone
 import jwt
@@ -23,6 +25,7 @@ from dotenv import load_dotenv
 from models import User, UserCreate, UserInDB, Token, TokenData, UserOut, LoginRequest, RegisterRequest
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES
+from fastapi import Body
 
 load_dotenv()
 
@@ -84,15 +87,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: EmailStr = payload.get("sub")
         user_id: str = payload.get("user_id")
-        if email is None or user_id is None:
+        ic("Extracted user_id from token:", user_id)  # Add logging here
+        if user_id is None:
             raise credentials_exception
-        token_data = TokenData(email=email)
     except InvalidTokenError:
         raise credentials_exception
-    user = get_user(collection_users, email=token_data.email)
-    if user is None or user.id != user_id:
+    user = get_user_by_id(collection_users, user_id)
+    if user is None:
         raise credentials_exception
     return user
 
@@ -105,15 +107,17 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 
 def get_user_by_id(collection, user_id: str):
     from bson import ObjectId
-    user_dict = collection.find_one({"_id": ObjectId(user_id)})
+    ic("user id here is")
+    ic(user_id)
+    try:
+        user_dict = collection.find_one({"_id": ObjectId(user_id)})
+    except bson.errors.InvalidId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
     if user_dict:
         user_dict["_id"] = str(user_dict["_id"])
-        return UserInDB(**user_dict)
+        return UserOut(**user_dict)
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-
-from fastapi import Body
 
 @app.post("/login", response_model=Token)
 async def login_for_access_token(
@@ -164,9 +168,9 @@ async def register_new_user(register_request: RegisterRequest):
     refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
-@app.get("/users/me/", response_model=UserInDB)
-async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-    return current_user
+# @app.get("/users/me/", response_model=UserInDB)
+# async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
+#     return current_user
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
@@ -175,3 +179,7 @@ async def read_user_by_id(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+
+
