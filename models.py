@@ -1,3 +1,9 @@
+"""
+original author: Dominik Cedro
+created: 2024-09-28
+license: none
+description: Models for user objects in DB, they also perform DTO role
+"""
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field

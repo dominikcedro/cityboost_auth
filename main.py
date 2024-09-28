@@ -1,11 +1,8 @@
-
-########### new one
-
 """
 original author: Dominik Cedro
 created: 2024-09-28
-license: GSB 3.0
-description: Main script for security setup, endpoint operation and app config
+license: none
+description: Main script for users endpoints
 """
 # from dotenv import load_dotenv
 import os

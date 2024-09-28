@@ -1,3 +1,9 @@
+"""
+original author: Dominik Cedro
+created: 2024-09-28
+license: none
+description: Security setup
+"""
 import os
 from datetime import timedelta, timezone, datetime
 from typing import Optional
