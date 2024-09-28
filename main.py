@@ -105,14 +105,16 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+from bson import ObjectId
+
 
 def get_user_by_id(collection, user_id: str):
-    from bson import ObjectId
     ic("user id here is")
     ic(user_id)
     try:
         user_dict = collection.find_one({"_id": ObjectId(user_id)})
     except bson.errors.InvalidId:
+        ic("Invalid user ID format")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
     if user_dict:
         user_dict["_id"] = str(user_dict["_id"])
@@ -172,42 +174,12 @@ async def register_new_user(register_request: RegisterRequest):
     refresh_token = create_refresh_token(data={"user_id": added_user.id}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
-# @app.get("/users/me/", response_model=UserInDB)
-# async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-#     return current_user
-
-
 @app.get("/users/{user_id}", response_model=UserResponse)
-async def read_user_by_id(user_id: str):
+async def read_user_by_id(user_id):
     user = get_user_by_id(collection_users, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-
-from fastapi import Header
-
-@app.post("/users/me", response_model=UserResponse)
-async def read_users_me(token_request: TokenRequest = Body(...)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        token = token_request.access_token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("user_id")
-        if user_id is None:
-            raise credentials_exception
-    except InvalidTokenError:
-        raise credentials_exception
-
-    user = get_user_by_id(collection_users, user_id)
-    if user is None:
-        raise credentials_exception
-    return user
-
 
 from fastapi import Body, HTTPException, status
 from jwt.exceptions import InvalidTokenError
@@ -242,5 +214,31 @@ async def refresh_access_token(refresh_request: RefreshRequest = Body(...)):
     return Token(access_token=access_token, refresh_token=token)
 
 
+def extract_user_id_from_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("user_id")
+        ic("Extracted user_id from token:", user_id)
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user_id
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
+@app.post("/get_me")
+async def extract_user_id(token_request: TokenRequest = Body(...)):
+    token = token_request.access_token
+    user_id = extract_user_id_from_token(token)
+    user = get_user_by_id(collection_users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user

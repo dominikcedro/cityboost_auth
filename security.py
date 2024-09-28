@@ -10,6 +10,7 @@ from typing import Optional
 from dotenv import load_dotenv
 import jwt
 from fastapi.security import OAuth2PasswordBearer
+from icecream import ic
 from passlib.context import CryptContext
 
 # to get a string like this run:
@@ -42,6 +43,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    ic("Token payload:", to_encode)  # Add logging for the payload
     return encoded_jwt
 
 
