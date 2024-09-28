@@ -20,9 +20,9 @@ from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 # module imports
-from models import User, UserCreate, UserInDB, Token, TokenData, UserOut
+from models import User, UserCreate, UserInDB, Token, TokenData, UserOut, LoginRequest
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
-    ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
+    ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES
 
 load_dotenv()
 
@@ -36,6 +36,18 @@ collection_counters = db["counters"]
 # API setup
 app = FastAPI()
 
+
+from fastapi import Request, HTTPException, status
+
+async def validate_user_create(request: Request):
+    body = await request.json()
+    email = body.get("email")
+    if not email or "@" not in email or "." not in email.split("@")[1]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email address. An email address must have an @-sign and a period after the @-sign."
+        )
+    return body
 
 def add_user_to_db(db, user: UserCreate):
     hashed_password = get_password_hash(user.password)
@@ -51,8 +63,8 @@ def add_user_to_db(db, user: UserCreate):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User registration failed")
 
 
-def get_user(collection, username: str):
-    user_dict = collection.find_one({"username": username})
+def get_user(collection, email: str):
+    user_dict = collection.find_one({"email": email})
     if user_dict:
         user_dict["_id"] = str(user_dict["_id"])
         return UserInDB(**user_dict)
@@ -100,14 +112,17 @@ def get_user_by_id(collection, user_id: str):
     if user_dict:
         user_dict["_id"] = str(user_dict["_id"])
         return UserInDB(**user_dict)
-    return None
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
-@app.post("/token", response_model=Token)
+from fastapi import Body
+
+@app.post("/login", response_model=Token)
 async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    login_request: LoginRequest = Body(...),
 ) -> Token:
-    user = authenticate_user(collection_users, form_data.email, form_data.password)
+    user = authenticate_user(collection_users, login_request.email, login_request.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -116,13 +131,16 @@ async def login_for_access_token(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return Token(access_token=access_token, token_type="bearer")
+        data={"sub": user.email}, expires_delta=access_token_expires)
+    refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+    refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
+    return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 @app.post("/register", response_model=Token)
-async def register_new_user(user: UserCreate):
+async def register_new_user(request: Request):
+    body = await validate_user_create(request)
+    user = UserCreate(**body)
     if get_user(collection_users, user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -136,19 +154,15 @@ async def register_new_user(user: UserCreate):
     new_user = add_user_to_db(collection_users, user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": new_user.email}, expires_delta=access_token_expires
-    )
-    return Token(access_token=access_token, token_type="bearer")
+        data={"sub": new_user.email}, expires_delta=access_token_expires)
+    refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+    refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
+    return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 @app.get("/users/me/", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     return current_user
-
-
-@app.get("/users/me/items/")
-async def read_own_items(current_user: User = Depends(get_current_active_user)):
-    return [{"item_id": "Foo", "owner": current_user.email}]
 
 
 @app.get("/users/{user_id}", response_model=UserOut)

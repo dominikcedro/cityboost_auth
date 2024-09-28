@@ -12,7 +12,7 @@ from bson import ObjectId
 
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: str
 
 
 class TokenData(BaseModel):
@@ -62,4 +62,8 @@ class UserOut(BaseModel):
         json_encoders = {
             ObjectId: str
         }
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
