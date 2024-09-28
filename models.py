@@ -49,6 +49,7 @@ class UserInDB(User):
             ObjectId: str
         }
 
+
 class UserOut(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     username: str

@@ -25,17 +25,17 @@ from security import get_password_hash, verify_password, oauth2_scheme, SECRET_K
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
 
 load_dotenv()
-uri = os.getenv("MONGO_URI")
-# DB setup
 
-# Create a new client and connect to the server
+# DB setup
+uri = os.getenv("MONGO_URI")
 client = MongoClient(uri)
 db = client.hackyeahdb
 collection_users = db["users"]
 collection_counters = db["counters"]
+
+# API setup
 app = FastAPI()
 
-### counters setup
 
 def add_user_to_db(db, user: UserCreate):
     hashed_password = get_password_hash(user.password)
@@ -44,7 +44,7 @@ def add_user_to_db(db, user: UserCreate):
     del user_dict["password"]
     result = db.insert_one(user_dict)
     if result.inserted_id:
-        ic("user collection posted")  #### log
+        ic("user collection posted")
 
         return UserInDB(**user_dict)
     else:
@@ -94,6 +94,15 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 
+def get_user_by_id(collection, user_id: str):
+    from bson import ObjectId
+    user_dict = collection.find_one({"_id": ObjectId(user_id)})
+    if user_dict:
+        user_dict["_id"] = str(user_dict["_id"])
+        return UserInDB(**user_dict)
+    return None
+
+
 @app.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -119,6 +128,11 @@ async def register_new_user(user: UserCreate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered",
         )
+    if get_user(collection_users, user.pesel):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pesel already registered",
+        )
     new_user = add_user_to_db(collection_users, user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -131,18 +145,10 @@ async def register_new_user(user: UserCreate):
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     return current_user
 
+
 @app.get("/users/me/items/")
 async def read_own_items(current_user: User = Depends(get_current_active_user)):
     return [{"item_id": "Foo", "owner": current_user.username}]
-
-
-def get_user_by_id(collection, user_id: str):
-    from bson import ObjectId
-    user_dict = collection.find_one({"_id": ObjectId(user_id)})
-    if user_dict:
-        user_dict["_id"] = str(user_dict["_id"])
-        return UserInDB(**user_dict)
-    return None
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
@@ -151,5 +157,3 @@ async def read_user_by_id(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-
