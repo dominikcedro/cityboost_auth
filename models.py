@@ -49,7 +49,7 @@ class UserInDB(User):
         }
 
 
-class UserOut(BaseModel):
+class UserResponse(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     email: EmailStr
     district: str
@@ -77,3 +77,8 @@ class RegisterRequest(BaseModel):
     district: Optional[str] = None
     role: Optional[str] = None
 
+
+from pydantic import BaseModel
+
+class RefreshRequest(BaseModel):
+    refresh_token: str

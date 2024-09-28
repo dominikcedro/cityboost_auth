@@ -22,9 +22,10 @@ from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 # module imports
-from models import User, UserCreate, UserInDB, Token, TokenData, UserOut, LoginRequest, RegisterRequest
+from models import User, UserCreate, UserInDB, Token, TokenData, LoginRequest, RegisterRequest, UserResponse, \
+    RefreshRequest
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
-    ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES, create_refresh_token
 from fastapi import Body
 
 load_dotenv()
@@ -115,7 +116,7 @@ def get_user_by_id(collection, user_id: str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
     if user_dict:
         user_dict["_id"] = str(user_dict["_id"])
-        return UserOut(**user_dict)
+        return UserResponse(**user_dict)
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -133,8 +134,9 @@ async def login_for_access_token(
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email, "user_id": user.id}, expires_delta=access_token_expires)
+
     refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
-    refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
+    refresh_token = create_refresh_token(data={"user_id": user.id}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 from fastapi import Request
@@ -163,9 +165,11 @@ async def register_new_user(register_request: RegisterRequest):
     added_user = add_user_to_db(collection_users, new_user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": added_user.email, "user_id": added_user.id}, expires_delta=access_token_expires)
+        data={"sub": added_user.email, "user_id": added_user.id},
+        expires_delta=access_token_expires)
+
     refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
-    refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
+    refresh_token = create_refresh_token(data={"user_id": added_user.id}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 # @app.get("/users/me/", response_model=UserInDB)
@@ -173,12 +177,68 @@ async def register_new_user(register_request: RegisterRequest):
 #     return current_user
 
 
-@app.get("/users/{user_id}", response_model=UserOut)
+@app.get("/users/{user_id}", response_model=UserResponse)
 async def read_user_by_id(user_id: str):
     user = get_user_by_id(collection_users, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+from fastapi import Header
+
+@app.get("/users/token")
+async def read_user_from_token(authorization: str = Header(...)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        token = authorization.split(" ")[1]  # Extract the token from the "Bearer <token>" format
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("user_id")
+        ic("Decoded payload:", payload)  # Add logging for the payload
+        if user_id is None:
+            raise credentials_exception
+        print(f"Extracted user_id from token: {user_id}")  # Print user_id to console
+    except (InvalidTokenError, IndexError) as e:
+        ic("InvalidTokenError or IndexError:", e)  # Add logging for the exception
+        raise credentials_exception
+    return {"message": "User ID printed to console"}
+
+
+from fastapi import Body, HTTPException, status
+from jwt.exceptions import InvalidTokenError
+from datetime import timedelta
+
+@app.post("/refresh", response_model=Token)
+async def refresh_access_token(refresh_request: RefreshRequest = Body(...)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        token = refresh_request.refresh_token
+        if not token:
+            ic("not token")
+            raise credentials_exception
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("user_id")
+        if user_id is None:
+            ic("user_id is None")
+            raise credentials_exception
+    except InvalidTokenError:
+        ic("invalid token")
+
+        raise credentials_exception
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": payload.get("sub"), "user_id": user_id}, expires_delta=access_token_expires)
+
+    return Token(access_token=access_token, refresh_token=token)
 
 
 
