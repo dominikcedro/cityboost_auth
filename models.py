@@ -35,7 +35,7 @@ class UserCreate(BaseModel):
     full_name: str
     pesel: str
     role: str
-    password: str
+    hashed_password: str
 
 
 class UserInDB(User):
@@ -66,4 +66,14 @@ class UserOut(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+from pydantic import BaseModel, EmailStr
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    pesel: str
+    full_name: str
+    district: Optional[str] = None
+    role: Optional[str] = None
 

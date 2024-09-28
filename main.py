@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 # module imports
-from models import User, UserCreate, UserInDB, Token, TokenData, UserOut, LoginRequest
+from models import User, UserCreate, UserInDB, Token, TokenData, UserOut, LoginRequest, RegisterRequest
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, REFRESH_TOKEN_EXPIRE_MINUTES
 
@@ -49,15 +49,11 @@ async def validate_user_create(request: Request):
         )
     return body
 
-def add_user_to_db(db, user: UserCreate):
-    hashed_password = get_password_hash(user.password)
+def add_user_to_db(collection, user: UserCreate):
     user_dict = user.dict()
-    user_dict["hashed_password"] = hashed_password
-    del user_dict["password"]
-    result = db.insert_one(user_dict)
+    result = collection.insert_one(user_dict)
     if result.inserted_id:
         user_dict["_id"] = str(result.inserted_id)
-        ic("user collection posted")
         return UserInDB(**user_dict)
     else:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User registration failed")
@@ -89,13 +85,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: EmailStr = payload.get("sub")
-        if email is None:
+        user_id: str = payload.get("user_id")
+        if email is None or user_id is None:
             raise credentials_exception
         token_data = TokenData(email=email)
     except InvalidTokenError:
         raise credentials_exception
     user = get_user(collection_users, email=token_data.email)
-    if user is None:
+    if user is None or user.id != user_id:
         raise credentials_exception
     return user
 
@@ -131,34 +128,41 @@ async def login_for_access_token(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires)
+        data={"sub": user.email, "user_id": user.id}, expires_delta=access_token_expires)
     refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
+from fastapi import Request
 
 @app.post("/register", response_model=Token)
-async def register_new_user(request: Request):
-    body = await validate_user_create(request)
-    user = UserCreate(**body)
-    if get_user(collection_users, user.email):
+async def register_new_user(register_request: RegisterRequest):
+    if get_user(collection_users, register_request.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
-    if get_user(collection_users, user.pesel):
+    if get_user(collection_users, register_request.pesel):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Pesel already registered",
         )
-    new_user = add_user_to_db(collection_users, user)
+    hashed_password = get_password_hash(register_request.password)
+    new_user = UserCreate(
+        email=register_request.email,
+        hashed_password=hashed_password,
+        pesel=register_request.pesel,
+        full_name=register_request.full_name,
+        district=register_request.district,
+        role="USER"
+    )
+    added_user = add_user_to_db(collection_users, new_user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": new_user.email}, expires_delta=access_token_expires)
+        data={"sub": added_user.email, "user_id": added_user.id}, expires_delta=access_token_expires)
     refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_token = create_access_token(data={}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
-
 
 @app.get("/users/me/", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
