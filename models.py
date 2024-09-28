@@ -43,3 +43,17 @@ class UserInDB(User):
             ObjectId: str
         }
 
+class UserOut(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    username: str
+    district: str
+    full_name: str
+    role: str
+    disabled: bool | None = None
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {
+            ObjectId: str
+        }
+

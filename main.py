@@ -23,7 +23,7 @@ from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 # module imports
-from models import User,UserCreate,UserInDB, Token, TokenData
+from models import User, UserCreate, UserInDB, Token, TokenData, UserOut
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
 
@@ -148,9 +148,11 @@ def get_user_by_id(collection, user_id: str):
     return None
 
 
-@app.get("/users/{user_id}", response_model=UserInDB)
+@app.get("/users/{user_id}", response_model=UserOut)
 async def read_user_by_id(user_id: str):
     user = get_user_by_id(collection_users, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
