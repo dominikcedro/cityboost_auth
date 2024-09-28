@@ -22,6 +22,7 @@ class User(BaseModel):
     disabled: bool | None = None
 
 
+
 class UserCreate(BaseModel):
     username: str
     district: str
@@ -33,7 +34,7 @@ class UserCreate(BaseModel):
 
 
 class UserInDB(User):
-    id: Optional[ObjectId] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id")
     hashed_password: str
 
     class Config:

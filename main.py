@@ -21,22 +21,24 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
-
+from dotenv import load_dotenv
 # module imports
 from models import User,UserCreate,UserInDB, Token, TokenData
 from security import get_password_hash, verify_password, oauth2_scheme, SECRET_KEY, ALGORITHM, \
     ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
 
+load_dotenv()
+uri = os.getenv("MONGO_URI")
 # DB setup
-
-uri = "mongodb+srv://fastapi:123fastapi@hackyeah-db.3xvq7.mongodb.net/?retryWrites=true&w=majority&appName=hackyeah-db"
 
 # Create a new client and connect to the server
 client = MongoClient(uri)
 db = client.hackyeahdb
 collection_users = db["users"]
-
+collection_counters = db["counters"]
 app = FastAPI()
+
+### counters setup
 
 def add_user_to_db(db, user: UserCreate):
     hashed_password = get_password_hash(user.password)
@@ -52,12 +54,10 @@ def add_user_to_db(db, user: UserCreate):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User registration failed")
 
 
-
 def get_user(collection, username: str):
     user_dict = collection.find_one({"username": username})
     if user_dict:
-        user_dict["id"] = str(user_dict["_id"])
-
+        user_dict["_id"] = str(user_dict["_id"])
         return UserInDB(**user_dict)
     return None
 
@@ -69,7 +69,6 @@ def authenticate_user(collection, username: str, password: str):
     if not verify_password(password, user.hashed_password):
         return False
     return user
-
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -96,6 +95,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(
@@ -129,11 +129,28 @@ async def register_new_user(user: UserCreate):
     )
     return Token(access_token=access_token, token_type="bearer")
 
+
 @app.get("/users/me/", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     return current_user
 
-
 @app.get("/users/me/items/")
 async def read_own_items(current_user: User = Depends(get_current_active_user)):
     return [{"item_id": "Foo", "owner": current_user.username}]
+
+
+def get_user_by_id(collection, user_id: str):
+    from bson import ObjectId
+    user_dict = collection.find_one({"_id": ObjectId(user_id)})
+    if user_dict:
+        user_dict["_id"] = str(user_dict["_id"])
+        return UserInDB(**user_dict)
+    return None
+
+
+@app.get("/users/{user_id}", response_model=UserInDB)
+async def read_user_by_id(user_id: str):
+    user = get_user_by_id(collection_users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
