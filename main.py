@@ -208,7 +208,7 @@ async def register_new_user(register_request: RegisterRequest):
         pesel=register_request.pesel,
         full_name=register_request.full_name,
         district=register_request.district,
-        role=register_request.role or "USER"
+        role="USER"
     )
     added_user = add_user_to_db(collection_users, new_user)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)

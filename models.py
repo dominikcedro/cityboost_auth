@@ -75,7 +75,7 @@ class RegisterRequest(BaseModel):
     pesel: str
     full_name: str
     district: Optional[str] = None
-    role: Optional[str] = None
+
 
 
 class RefreshRequest(BaseModel):
