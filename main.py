@@ -234,8 +234,8 @@ def extract_user_id_from_token(token: str) -> str:
         )
 
 
-@app.post("/get_me")
-async def extract_user_id(token_request: TokenRequest = Body(...)):
+@app.post("/get_me", response_model=UserResponse)
+async def extract_user_info(token_request: TokenRequest = Body(...)):
     token = token_request.access_token
     user_id = extract_user_id_from_token(token)
     user = get_user_by_id(collection_users, user_id)
