@@ -4,6 +4,7 @@ created: 2024-09-28
 license: none
 description: Main script for users endpoints
 """
+
 # from dotenv import load_dotenv
 import os
 from typing import Optional, List
@@ -14,12 +15,12 @@ from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
-from fastapi import Body
 from bson import ObjectId
 from fastapi import Body, HTTPException, status
 from jwt.exceptions import InvalidTokenError
 from datetime import timedelta
-
+from fastapi import Request
+from starlette.middleware.cors import CORSMiddleware
 
 # module imports
 from models import User, UserCreate, UserInDB, Token, TokenData, LoginRequest, RegisterRequest, UserResponse, \
@@ -39,6 +40,14 @@ collection_counters = db["counters"]
 # API setup
 app = FastAPI()
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def validate_user_create(request: Request):
     """
@@ -110,33 +119,6 @@ def authenticate_user(collection, email: EmailStr, password: str):
     return user
 
 
-# async def get_current_user(token: str = Depends(oauth2_scheme)):
-#
-#     credentials_exception = HTTPException(
-#         status_code=status.HTTP_401_UNAUTHORIZED,
-#         detail="Could not validate credentials",
-#         headers={"WWW-Authenticate": "Bearer"},
-#     )
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-#         user_id: str = payload.get("user_id")
-#         ic("Extracted user_id from token:", user_id)  # Add logging here
-#         if user_id is None:
-#             raise credentials_exception
-#     except InvalidTokenError:
-#         raise credentials_exception
-#     user = get_user_by_id(collection_users, user_id)
-#     if user is None:
-#         raise credentials_exception
-#     return user
-
-
-# async def get_current_active_user(current_user: User = Depends(get_current_user)):
-#     if current_user.disabled:
-#         raise HTTPException(status_code=400, detail="Inactive user")
-#     return current_user
-
-
 def get_user_by_id(collection, user_id: str):
     """
         Retrieve user from db based on user_id - BSON
@@ -194,7 +176,6 @@ async def login_for_access_token(
     refresh_token = create_refresh_token(data={"user_id": user.id}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
-from fastapi import Request
 
 @app.post("/register", response_model=Token)
 async def register_new_user(register_request: RegisterRequest):
@@ -208,7 +189,7 @@ async def register_new_user(register_request: RegisterRequest):
             Token: access_token and refresh_token
 
         Raises:
-            HTTP Exception 400 when email/pesel registered.
+            HTTP Exception 400 when email/pesel already registered.
         """
     if get_user(collection_users, register_request.email):
         raise HTTPException(
@@ -238,6 +219,7 @@ async def register_new_user(register_request: RegisterRequest):
     refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_token = create_refresh_token(data={"user_id": added_user.id}, expires_delta=refresh_token_expires)
     return Token(access_token=access_token, refresh_token=refresh_token)
+
 
 @app.get("/users/{user_id}", response_model=UserResponse)
 async def read_user_by_id(user_id):
@@ -354,6 +336,7 @@ async def extract_user_info(token_request: TokenRequest = Body(...)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
 @app.get("/users", response_model=List[UserResponse])
 async def get_all_users():
     """
@@ -369,6 +352,7 @@ async def get_all_users():
     for user in users:
         user["_id"] = str(user["_id"])
     return [UserResponse(**user) for user in users]
+
 
 @app.get("/health")
 async def healthcheck():

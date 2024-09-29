@@ -5,9 +5,10 @@ license: none
 description: Models for user objects in DB, they also perform DTO role
 """
 from typing import Optional
-
 from pydantic import BaseModel, EmailStr, Field
 from bson import ObjectId
+from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class Token(BaseModel):
@@ -26,7 +27,6 @@ class User(BaseModel):
     pesel: str
     role: str
     disabled: bool | None = None
-
 
 
 class UserCreate(BaseModel):
@@ -63,11 +63,11 @@ class UserResponse(BaseModel):
             ObjectId: str
         }
 
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-from pydantic import BaseModel, EmailStr
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -78,10 +78,9 @@ class RegisterRequest(BaseModel):
     role: Optional[str] = None
 
 
-from pydantic import BaseModel
-
 class RefreshRequest(BaseModel):
     refresh_token: str
+
 
 class TokenRequest(BaseModel):
     access_token: str
